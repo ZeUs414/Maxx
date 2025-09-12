@@ -6,6 +6,8 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      APP_NAME: ChatZEUS   # غيّر هنا إذا كان اسم bundle مختلفًا
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,32 +33,18 @@ jobs:
             exit 1
           fi
 
-      - name: Create ExportOptions.plist
-        run: |
-          cat > ExportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>development</string>
-              <key>compileBitcode</key>
-              <false/>
-          </dict>
-          </plist>
-          EOF
-
       - name: Build and Archive
         run: |
+          APP_NAME="${APP_NAME:-ChatZEUS}"
           if [ -d "ChatZEUS.swiftpm" ]; then
             cd ChatZEUS.swiftpm
             mkdir -p ../build
-            # إذا كان اسم الـ scheme مختلفاً عدّله هنا
-            xcodebuild -scheme ChatZEUS \
+            echo "بادئ البناء والأرشفة للاسم: $APP_NAME"
+            xcodebuild -scheme "$APP_NAME" \
                        -destination 'generic/platform=iOS' \
                        -sdk iphoneos \
                        -configuration Release \
-                       -archivePath ../build/ChatZEUS.xcarchive \
+                       -archivePath ../build/"$APP_NAME".xcarchive \
                        archive \
                        CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
             cd ..
@@ -65,16 +53,38 @@ jobs:
             exit 1
           fi
 
-      - name: Export IPA
+      - name: Show archive contents (debug)
         run: |
-          if [ -d "build/ChatZEUS.xcarchive" ]; then
-            xcodebuild -exportArchive \
-                       -archivePath build/ChatZEUS.xcarchive \
-                       -exportOptionsPlist ExportOptions.plist \
-                       -exportPath build
+          APP_NAME="${APP_NAME:-ChatZEUS}"
+          ARCHIVE="build/$APP_NAME.xcarchive"
+          echo "تفاصيل الأرشيف (إن وجدت): $ARCHIVE"
+          if [ -d "$ARCHIVE" ]; then
+            ls -la "$ARCHIVE"
+            echo "داخل Products/Applications:"
+            ls -la "$ARCHIVE/Products/Applications" || true
           else
-            echo "الأرشيف غير موجود في build/ChatZEUS.xcarchive"
-            ls -la build || true
+            echo "الأرشيف غير موجود."
+          fi
+
+      - name: Create unsigned IPA (for signing later with ksign)
+        run: |
+          APP_NAME="${APP_NAME:-ChatZEUS}"
+          ARCHIVE="build/$APP_NAME.xcarchive"
+          APP_PATH="$ARCHIVE/Products/Applications/$APP_NAME.app"
+
+          if [ -d "$APP_PATH" ]; then
+            echo "وجدت التطبيق داخل الأرشيف: $APP_PATH"
+            rm -rf build/Payload
+            mkdir -p build/Payload
+            cp -R "$APP_PATH" build/Payload/
+            # أنشئ ملف ipa غير موقّع
+            (cd build && zip -r "${APP_NAME}-unsigned.ipa" Payload)
+            echo "تم إنشاء build/${APP_NAME}-unsigned.ipa"
+            ls -la build/*.ipa || true
+          else
+            echo "خطأ: لم أجد التطبيق داخل الأرشيف: $APP_PATH"
+            echo "تفاصيل الأرشيف:"
+            ls -la "$ARCHIVE" || true
             exit 1
           fi
 

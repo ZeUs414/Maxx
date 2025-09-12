@@ -18,6 +18,19 @@ jobs:
       - name: Unzip Project
         run: unzip ChatZEUS.zip
 
+      - name: Show available schemes (verify)
+        run: |
+          if [ -d "ChatZEUS.swiftpm" ]; then
+            cd ChatZEUS.swiftpm
+            echo "داخل مجلد ChatZEUS.swiftpm — أظهر الـ schemes المتاحة:"
+            xcodebuild -list || true
+            cd ..
+          else
+            echo "لم أجد مجلد ChatZEUS.swiftpm؛ أدرج محتويات المستودع:"
+            ls -la
+            exit 1
+          fi
+
       - name: Create ExportOptions.plist
         run: |
           cat > ExportOptions.plist <<EOF
@@ -35,20 +48,34 @@ jobs:
 
       - name: Build and Archive
         run: |
-          xcodebuild -project ChatZEUS.swiftpm \
-                     -scheme ChatZEUS \
-                     -sdk iphoneos \
-                     -configuration Release \
-                     -archivePath build/ChatZEUS.xcarchive \
-                     archive \
-                     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          if [ -d "ChatZEUS.swiftpm" ]; then
+            cd ChatZEUS.swiftpm
+            mkdir -p ../build
+            # تأكد أن اسم الـ scheme صحيح؛ إذا اختلف، عدّله هنا إلى الاسم الصحيح
+            xcodebuild -scheme ChatZEUS \
+                       -sdk iphoneos \
+                       -configuration Release \
+                       -archivePath ../build/ChatZEUS.xcarchive \
+                       archive \
+                       CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+            cd ..
+          else
+            echo "لم أجد مجلد ChatZEUS.swiftpm؛ لا يمكن البناء"
+            exit 1
+          fi
 
       - name: Export IPA
         run: |
-          xcodebuild -exportArchive \
-                     -archivePath build/ChatZEUS.xcarchive \
-                     -exportOptionsPlist ExportOptions.plist \
-                     -exportPath build
+          if [ -d "build/ChatZEUS.xcarchive" ]; then
+            xcodebuild -exportArchive \
+                       -archivePath build/ChatZEUS.xcarchive \
+                       -exportOptionsPlist ExportOptions.plist \
+                       -exportPath build
+          else
+            echo "الأرشيف غير موجود في build/ChatZEUS.xcarchive"
+            ls -la build || true
+            exit 1
+          fi
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
